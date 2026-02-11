@@ -1,18 +1,9 @@
 local VIP_USERS = {
-    -- Format: ["Username"] = expiry_timestamp
-    -- Contoh tambah VIP:
-    -- ["Player1"] = os.time() + (30 * 86400), -- 30 hari
-    -- ["Player2"] = os.time() + (7 * 86400),  -- 7 hari
-    -- ["Player3"] = -1, -- Lifetime
-    
-    -- TAMBAHKAN USERNAME VIP DI SINI:
     ["NazamOfficial"] = -1,
 }
 
--- VIP Member List Key
 local VIP_LIST_KEY = "nazam123321A"
 
--- === CHECK VIP STATUS ===
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local isVIP = false
@@ -26,11 +17,11 @@ if VIP_USERS[player.Name] then
     end
 end
 
--- === GLOBAL VARIABLES ===
 _G.InfiniteAmmoEnabled = false
 _G.KillingInProgress = false
 _G.HitBoxEnabled = false
 _G.ESPEnabled = false
+_G.BlockRollEnabled = false
 _G.HeadSize = 20
 
 local RunService = game:GetService("RunService")
@@ -42,66 +33,76 @@ local Network = WeaponsSystem:WaitForChild("Network")
 local WeaponHit = Network:WaitForChild("WeaponHit")
 local WeaponFired = Network:WaitForChild("WeaponFired")
 
--- === ESP SYSTEM (FREE FEATURE) ===
+-- BLOCK ROLL (VIP) - Blokir DIRI SENDIRI dari rolling
+if isVIP then
+    local PlayRollAnimation = game:GetService("ReplicatedStorage"):WaitForChild("PlayRollAnimation")
+    local originalNamecall
+
+    local function blockRoll()
+        if _G.BlockRollEnabled then
+            originalNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                local method = getnamecallmethod()
+                if method == "FireServer" and self == PlayRollAnimation then
+                    return -- BLOCK roll kamu sendiri
+                end
+                return originalNamecall(self, ...)
+            end)
+        else
+            if originalNamecall then
+                hookmetamethod(game, "__namecall", originalNamecall)
+            end
+        end
+    end
+
+    _G.UpdateBlockRoll = blockRoll
+end
+
+-- ESP SYSTEM (FREE)
 local espFolder = Instance.new("Folder")
 espFolder.Name = "ESP_Folder"
 espFolder.Parent = game.CoreGui
 
 local function createESP(targetPlayer)
     if targetPlayer == Players.LocalPlayer then return end
-    
+
     local function addESP(char)
         if not char then return end
-        
+
         local hrp = char:WaitForChild("HumanoidRootPart", 5)
         if not hrp then return end
-        
+
         for _, v in pairs(espFolder:GetChildren()) do
             if v.Name == targetPlayer.Name .. "_ESP" then
                 v:Destroy()
             end
         end
-        
+
         local espGui = Instance.new("BillboardGui")
         espGui.Name = targetPlayer.Name .. "_ESP"
         espGui.Adornee = hrp
         espGui.Size = UDim2.new(4, 0, 5, 0)
         espGui.AlwaysOnTop = true
         espGui.Parent = espFolder
-        
+
         local frame = Instance.new("Frame")
         frame.Size = UDim2.new(1, 0, 1, 0)
         frame.BackgroundTransparency = 1
         frame.Parent = espGui
-        
-        local topLine = Instance.new("Frame")
-        topLine.Size = UDim2.new(1, 0, 0, 2)
-        topLine.Position = UDim2.new(0, 0, 0, 0)
-        topLine.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
-        topLine.BorderSizePixel = 0
-        topLine.Parent = frame
-        
-        local bottomLine = Instance.new("Frame")
-        bottomLine.Size = UDim2.new(1, 0, 0, 2)
-        bottomLine.Position = UDim2.new(0, 0, 1, -2)
-        bottomLine.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
-        bottomLine.BorderSizePixel = 0
-        bottomLine.Parent = frame
-        
-        local leftLine = Instance.new("Frame")
-        leftLine.Size = UDim2.new(0, 2, 1, 0)
-        leftLine.Position = UDim2.new(0, 0, 0, 0)
-        leftLine.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
-        leftLine.BorderSizePixel = 0
-        leftLine.Parent = frame
-        
-        local rightLine = Instance.new("Frame")
-        rightLine.Size = UDim2.new(0, 2, 1, 0)
-        rightLine.Position = UDim2.new(1, -2, 0, 0)
-        rightLine.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
-        rightLine.BorderSizePixel = 0
-        rightLine.Parent = frame
-        
+
+        for _, data in pairs({
+            {UDim2.new(1,0,0,2), UDim2.new(0,0,0,0)},
+            {UDim2.new(1,0,0,2), UDim2.new(0,0,1,-2)},
+            {UDim2.new(0,2,1,0), UDim2.new(0,0,0,0)},
+            {UDim2.new(0,2,1,0), UDim2.new(1,-2,0,0)},
+        }) do
+            local line = Instance.new("Frame")
+            line.Size = data[1]
+            line.Position = data[2]
+            line.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
+            line.BorderSizePixel = 0
+            line.Parent = frame
+        end
+
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Size = UDim2.new(1, 0, 0, 20)
         nameLabel.Position = UDim2.new(0, 0, 0, -25)
@@ -112,16 +113,16 @@ local function createESP(targetPlayer)
         nameLabel.TextSize = 12
         nameLabel.TextStrokeTransparency = 0.5
         nameLabel.Parent = frame
-        
+
         char.AncestryChanged:Connect(function()
             espGui:Destroy()
         end)
     end
-    
+
     if targetPlayer.Character then
         addESP(targetPlayer.Character)
     end
-    
+
     targetPlayer.CharacterAdded:Connect(addESP)
 end
 
@@ -130,14 +131,13 @@ local function updateESP()
         for _, v in pairs(Players:GetPlayers()) do
             createESP(v)
         end
-        
         Players.PlayerAdded:Connect(createESP)
     else
         espFolder:ClearAllChildren()
     end
 end
 
--- === HIT BOX SYSTEM (VIP ONLY) ===
+-- HITBOX (VIP)
 if isVIP then
     RunService.RenderStepped:Connect(function()
         if _G.HitBoxEnabled then
@@ -162,78 +162,44 @@ local function createMainGUI()
     gui.Parent = game.CoreGui
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    
-    -- === IMPROVED ICON BUTTON WITH DRAG ===
+
+    -- ICON BUTTON (WITH DRAG)
     local iconButton = Instance.new("ImageButton")
     iconButton.Name = "MinimizedIcon"
     iconButton.Size = UDim2.new(0, 50, 0, 50)
     iconButton.Position = UDim2.new(0, 100, 0, 110)
     iconButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    iconButton.BorderColor3 = isVIP and Color3.fromRGB(148, 0, 211) or Color3.fromRGB(148, 0, 211)
+    iconButton.BorderColor3 = Color3.fromRGB(148, 0, 211)
     iconButton.BorderSizePixel = 3
-    iconButton.Image = ""
     iconButton.Visible = false
     iconButton.Active = true
-    iconButton.Draggable = false
     iconButton.Parent = gui
-    
-    local iconCorner = Instance.new("UICorner", iconButton)
-    iconCorner.CornerRadius = UDim.new(0.2, 0)
-    
-    local iconStroke = Instance.new("UIStroke")
-    iconStroke.Color = isVIP and Color3.fromRGB(148, 0, 211) or Color3.fromRGB(148, 0, 211)
-    iconStroke.Thickness = 2
-    iconStroke.Transparency = 0.3
-    iconStroke.Parent = iconButton
-    
-    local iconGradient = Instance.new("UIGradient")
-    iconGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 25, 25)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 15, 15))
-    }
-    iconGradient.Rotation = 45
-    iconGradient.Parent = iconButton
-    
+
+    Instance.new("UICorner", iconButton).CornerRadius = UDim.new(0.2, 0)
+
     local iconLabel = Instance.new("TextLabel")
     iconLabel.Size = UDim2.new(1, 0, 1, 0)
     iconLabel.BackgroundTransparency = 1
     iconLabel.Text = "V"
-    iconLabel.TextColor3 = isVIP and Color3.fromRGB(148, 0, 211) or Color3.fromRGB(255, 255, 255)
+    iconLabel.TextColor3 = Color3.fromRGB(148, 0, 211)
     iconLabel.Font = Enum.Font.GothamBold
     iconLabel.TextSize = 26
     iconLabel.Parent = iconButton
-    
-    local iconShadow = Instance.new("ImageLabel")
-    iconShadow.Size = UDim2.new(1, 20, 1, 20)
-    iconShadow.Position = UDim2.new(0, -10, 0, -10)
-    iconShadow.BackgroundTransparency = 1
-    iconShadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-    iconShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-    iconShadow.ImageTransparency = 0.7
-    iconShadow.ZIndex = 0
-    iconShadow.Parent = iconButton
-    
-    -- === MAIN FRAME ===
+
+    -- MAIN FRAME
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 190, 0, isVIP and 300 or 230)
+    mainFrame.Size = UDim2.new(0, 190, 0, isVIP and 340 or 230)
     mainFrame.Position = UDim2.new(0, 100, 0, 110)
     mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    mainFrame.BorderColor3 = isVIP and Color3.fromRGB(148, 0, 211) or Color3.fromRGB(148, 0, 211)
+    mainFrame.BorderColor3 = Color3.fromRGB(148, 0, 211)
     mainFrame.BorderSizePixel = 3
     mainFrame.Active = true
     mainFrame.Visible = true
     mainFrame.Parent = gui
-    
-    local mainCorner = Instance.new("UICorner", mainFrame)
-    mainCorner.CornerRadius = UDim.new(0, 10)
-    
-    local mainStroke = Instance.new("UIStroke")
-    mainStroke.Color = isVIP and Color3.fromRGB(148, 0, 211) or Color3.fromRGB(148, 0, 211)
-    mainStroke.Thickness = 1
-    mainStroke.Transparency = 0.5
-    mainStroke.Parent = mainFrame
-    
+
+    Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+
     local mainGradient = Instance.new("UIGradient")
     mainGradient.Color = ColorSequence.new{
         ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 22, 22)),
@@ -241,30 +207,31 @@ local function createMainGUI()
     }
     mainGradient.Rotation = 90
     mainGradient.Parent = mainFrame
-    
+
     local dragHandle = Instance.new("Frame")
     dragHandle.Name = "DragHandle"
     dragHandle.Size = UDim2.new(1, 0, 0, 30)
     dragHandle.BackgroundTransparency = 1
     dragHandle.Active = true
     dragHandle.Parent = mainFrame
-    
+
+    -- HEADER
     local header = Instance.new("Frame")
     header.Size = UDim2.new(1, 0, 0, 30)
     header.BackgroundTransparency = 1
     header.Parent = mainFrame
-    
+
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(0.65, 0, 1, 0)
     title.Position = UDim2.new(0, 10, 0, 0)
     title.BackgroundTransparency = 1
     title.Text = isVIP and "VORTEX VIP" or "VORTEX"
-    title.TextColor3 = isVIP and Color3.fromRGB(148, 0, 211) or Color3.fromRGB(255, 255, 255)
+    title.TextColor3 = Color3.fromRGB(148, 0, 211)
     title.Font = Enum.Font.GothamBold
     title.TextSize = 13
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Parent = header
-    
+
     local vipListBtn
     if isVIP then
         vipListBtn = Instance.new("TextButton")
@@ -276,10 +243,9 @@ local function createMainGUI()
         vipListBtn.Font = Enum.Font.GothamBold
         vipListBtn.TextSize = 12
         vipListBtn.Parent = header
-        
         Instance.new("UICorner", vipListBtn).CornerRadius = UDim.new(0, 5)
     end
-    
+
     local closeButton = Instance.new("TextButton")
     closeButton.Size = UDim2.new(0, 24, 0, 24)
     closeButton.Position = UDim2.new(1, -26, 0, 3)
@@ -291,44 +257,38 @@ local function createMainGUI()
     closeButton.Font = Enum.Font.GothamBold
     closeButton.TextSize = 14
     closeButton.Parent = header
-    
     Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 5)
-    
+
     closeButton.MouseEnter:Connect(function()
         closeButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
     end)
-    
     closeButton.MouseLeave:Connect(function()
         closeButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
     end)
-    
+
     local headerLine = Instance.new("Frame")
     headerLine.Size = UDim2.new(0.92, 0, 0, 2)
     headerLine.Position = UDim2.new(0.04, 0, 0, 31)
-    headerLine.BackgroundColor3 = isVIP and Color3.fromRGB(148, 0, 211) or Color3.fromRGB(148, 0, 211)
+    headerLine.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
     headerLine.BorderSizePixel = 0
     headerLine.Parent = mainFrame
-    
     Instance.new("UICorner", headerLine).CornerRadius = UDim.new(1, 0)
-    
+
     local yPos = 38
-    
+
+    -- FREE: INF AMMO
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0.92, 0, 0, 32)
     toggleBtn.Position = UDim2.new(0.04, 0, 0, yPos)
     toggleBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    toggleBtn.BorderColor3 = Color3.fromRGB(60, 60, 60)
-    toggleBtn.BorderSizePixel = 1
     toggleBtn.Text = "INF AMMO: OFF"
     toggleBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
     toggleBtn.Font = Enum.Font.GothamBold
     toggleBtn.TextSize = 10
     toggleBtn.Parent = mainFrame
-    
     Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 6)
-    
     yPos = yPos + 36
-    
+
     local weaponLabel = Instance.new("TextLabel")
     weaponLabel.Size = UDim2.new(0.92, 0, 0, 18)
     weaponLabel.Position = UDim2.new(0.04, 0, 0, yPos)
@@ -339,35 +299,31 @@ local function createMainGUI()
     weaponLabel.TextSize = 9
     weaponLabel.TextXAlignment = Enum.TextXAlignment.Left
     weaponLabel.Parent = mainFrame
-    
     yPos = yPos + 22
-    
+
+    -- FREE: ESP
     local espBtn = Instance.new("TextButton")
     espBtn.Size = UDim2.new(0.92, 0, 0, 32)
     espBtn.Position = UDim2.new(0.04, 0, 0, yPos)
     espBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    espBtn.BorderColor3 = Color3.fromRGB(60, 60, 60)
-    espBtn.BorderSizePixel = 1
     espBtn.Text = "ESP: OFF"
     espBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
     espBtn.Font = Enum.Font.GothamBold
     espBtn.TextSize = 10
     espBtn.Parent = mainFrame
-    
     Instance.new("UICorner", espBtn).CornerRadius = UDim.new(0, 6)
-    
     yPos = yPos + 36
-    
+
     if isVIP then
+        -- VIP BADGE
         local vipBadge = Instance.new("Frame")
         vipBadge.Size = UDim2.new(0.92, 0, 0, 24)
         vipBadge.Position = UDim2.new(0.04, 0, 0, yPos)
         vipBadge.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
         vipBadge.BorderSizePixel = 0
         vipBadge.Parent = mainFrame
-        
         Instance.new("UICorner", vipBadge).CornerRadius = UDim.new(0, 6)
-        
+
         local vipText = Instance.new("TextLabel")
         vipText.Size = UDim2.new(1, 0, 1, 0)
         vipText.BackgroundTransparency = 1
@@ -376,15 +332,26 @@ local function createMainGUI()
         vipText.Font = Enum.Font.GothamBold
         vipText.TextSize = 11
         vipText.Parent = vipBadge
-        
         yPos = yPos + 28
-        
+
+        -- VIP: BLOCK ROLL
+        local blockRollBtn = Instance.new("TextButton")
+        blockRollBtn.Size = UDim2.new(0.92, 0, 0, 30)
+        blockRollBtn.Position = UDim2.new(0.04, 0, 0, yPos)
+        blockRollBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        blockRollBtn.Text = "BLOCK ROLL: OFF"
+        blockRollBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+        blockRollBtn.Font = Enum.Font.GothamBold
+        blockRollBtn.TextSize = 10
+        blockRollBtn.Parent = mainFrame
+        Instance.new("UICorner", blockRollBtn).CornerRadius = UDim.new(0, 6)
+        yPos = yPos + 34
+
+        -- VIP: USERNAME INPUT
         local usernameInput = Instance.new("TextBox")
         usernameInput.Size = UDim2.new(0.92, 0, 0, 30)
         usernameInput.Position = UDim2.new(0.04, 0, 0, yPos)
         usernameInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        usernameInput.BorderColor3 = Color3.fromRGB(60, 60, 60)
-        usernameInput.BorderSizePixel = 1
         usernameInput.Text = ""
         usernameInput.PlaceholderText = "Enter username..."
         usernameInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
@@ -393,89 +360,72 @@ local function createMainGUI()
         usernameInput.TextSize = 10
         usernameInput.ClearTextOnFocus = false
         usernameInput.Parent = mainFrame
-        
         Instance.new("UICorner", usernameInput).CornerRadius = UDim.new(0, 6)
-        
         yPos = yPos + 34
-        
+
+        -- VIP: KILL / KILL ALL
         local killPlayerBtn = Instance.new("TextButton")
         killPlayerBtn.Size = UDim2.new(0.45, 0, 0, 30)
         killPlayerBtn.Position = UDim2.new(0.04, 0, 0, yPos)
         killPlayerBtn.BackgroundColor3 = Color3.fromRGB(153, 50, 204)
-        killPlayerBtn.BorderColor3 = Color3.fromRGB(255, 80, 80)
-        killPlayerBtn.BorderSizePixel = 1
         killPlayerBtn.Text = "KILL"
         killPlayerBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
         killPlayerBtn.Font = Enum.Font.GothamBold
         killPlayerBtn.TextSize = 10
         killPlayerBtn.Parent = mainFrame
-        
         Instance.new("UICorner", killPlayerBtn).CornerRadius = UDim.new(0, 6)
-        
+
         local killAllBtn = Instance.new("TextButton")
         killAllBtn.Size = UDim2.new(0.45, 0, 0, 30)
         killAllBtn.Position = UDim2.new(0.51, 0, 0, yPos)
         killAllBtn.BackgroundColor3 = Color3.fromRGB(153, 50, 204)
-        killAllBtn.BorderColor3 = Color3.fromRGB(255, 50, 50)
-        killAllBtn.BorderSizePixel = 1
         killAllBtn.Text = "KILL ALL"
         killAllBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
         killAllBtn.Font = Enum.Font.GothamBold
         killAllBtn.TextSize = 10
         killAllBtn.Parent = mainFrame
-        
         Instance.new("UICorner", killAllBtn).CornerRadius = UDim.new(0, 6)
-        
         yPos = yPos + 34
-        
+
+        -- VIP: HITBOX
         local hitBoxBtn = Instance.new("TextButton")
         hitBoxBtn.Size = UDim2.new(0.92, 0, 0, 30)
         hitBoxBtn.Position = UDim2.new(0.04, 0, 0, yPos)
         hitBoxBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        hitBoxBtn.BorderColor3 = Color3.fromRGB(60, 60, 60)
-        hitBoxBtn.BorderSizePixel = 1
         hitBoxBtn.Text = "HITBOX: OFF"
         hitBoxBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
         hitBoxBtn.Font = Enum.Font.GothamBold
         hitBoxBtn.TextSize = 10
         hitBoxBtn.Parent = mainFrame
-        
         Instance.new("UICorner", hitBoxBtn).CornerRadius = UDim.new(0, 6)
-        
         yPos = yPos + 34
-        
+
+        -- KILL FUNCTIONS
         local function realisticKill(target)
             local ourWeapon = player.Character and player.Character:FindFirstChildOfClass("Tool")
-            if not ourWeapon then
-                ourWeapon = player.Backpack:FindFirstChildOfClass("Tool")
-            end
-            
+            if not ourWeapon then ourWeapon = player.Backpack:FindFirstChildOfClass("Tool") end
             if not ourWeapon then return false end
-            
+
             local targetHead = target.Character and target.Character:FindFirstChild("Head")
             if not targetHead then return false end
-            
+
             local char = player.Character
             if not char then return false end
-            
+
             local origin = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
             if not origin then return false end
-            
+
             local distance = (targetHead.Position - origin.Position).Magnitude
-            
+
             WeaponFired:FireServer(ourWeapon, {
-                ["id"] = 41,
-                ["charge"] = 0,
+                ["id"] = 41, ["charge"] = 0,
                 ["dir"] = (targetHead.Position - origin.Position).Unit,
                 ["origin"] = origin.Position
             })
-            
-            local travelTime = distance / 1000
-            if travelTime < 0.01 then travelTime = 0.01 end
-            if travelTime > 0.1 then travelTime = 0.1 end
-            
+
+            local travelTime = math.clamp(distance / 1000, 0.01, 0.1)
             task.wait(travelTime)
-            
+
             for i = 1, 8 do
                 WeaponHit:FireServer(ourWeapon, {
                     ["p"] = targetHead.Position,
@@ -491,23 +441,23 @@ local function createMainGUI()
                 })
                 task.wait(0.01)
             end
-            
+
             return true
         end
-        
+
         local function killTargetPlayer(targetName)
             if _G.KillingInProgress then return end
-            
+
             local target = nil
             local searchName = targetName:lower()
-            
+
             for _, plr in pairs(Players:GetPlayers()) do
                 if plr.Name:lower() == searchName or plr.DisplayName:lower() == searchName then
                     target = plr
                     break
                 end
             end
-            
+
             if not target then
                 for _, plr in pairs(Players:GetPlayers()) do
                     if plr.Name:lower():find(searchName) or plr.DisplayName:lower():find(searchName) then
@@ -516,15 +466,15 @@ local function createMainGUI()
                     end
                 end
             end
-            
+
             if not target or target == player or not target.Character then return end
-            
+
             _G.KillingInProgress = true
             realisticKill(target)
-            task.wait(1)
+            task.wait(8.83)
             _G.KillingInProgress = false
         end
-        
+
         local function killAllPlayers()
             if _G.KillingInProgress then
                 _G.KillingInProgress = false
@@ -532,42 +482,66 @@ local function createMainGUI()
                 killAllBtn.BackgroundColor3 = Color3.fromRGB(153, 50, 204)
                 return
             end
-            
+
             _G.KillingInProgress = true
             killAllBtn.Text = "STOP"
             killAllBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 100)
-            
-            for _, target in pairs(Players:GetPlayers()) do
-                if not _G.KillingInProgress then break end
-                
-                if target ~= player and target.Character then
-                    local humanoid = target.Character:FindFirstChild("Humanoid")
-                    if humanoid and humanoid.Health > 0 then
-                        realisticKill(target)
-                        task.wait(0.5)
+
+            task.spawn(function()
+                while _G.KillingInProgress do
+                    -- Kill semua
+                    for _, target in pairs(Players:GetPlayers()) do
+                        if target ~= player and target.Character then
+                            local hum = target.Character:FindFirstChild("Humanoid")
+                            if hum and hum.Health > 0 then
+                                task.spawn(function()
+                                    if _G.KillingInProgress then
+                                        realisticKill(target)
+                                    end
+                                end)
+                            end
+                        end
+                    end
+
+                    -- Respawn diri sendiri (FIXED)
+                    task.wait(0.3)
+                    if _G.KillingInProgress then
+                        local respawnSuccess = pcall(function()
+                            player:LoadCharacter()
+                        end)
+
+                        if not respawnSuccess then
+                            pcall(function()
+                                local hum = player.Character and player.Character:FindFirstChild("Humanoid")
+                                if hum then
+                                    hum.Health = 0
+                                end
+                            end)
+                        end
+                    end
+
+                    if _G.KillingInProgress then
+                        task.wait(8.83)
                     end
                 end
-            end
-            
-            killAllBtn.Text = "KILL ALL"
-            killAllBtn.BackgroundColor3 = Color3.fromRGB(153, 50, 204)
-            _G.KillingInProgress = false
+
+                killAllBtn.Text = "KILL ALL"
+                killAllBtn.BackgroundColor3 = Color3.fromRGB(153, 50, 204)
+            end)
         end
-        
+
         killPlayerBtn.MouseButton1Click:Connect(function()
-            local username = usernameInput.Text
-            if username and username ~= "" then
-                killTargetPlayer(username)
+            if usernameInput.Text ~= "" then
+                killTargetPlayer(usernameInput.Text)
             end
         end)
-        
+
         killAllBtn.MouseButton1Click:Connect(function()
             killAllPlayers()
         end)
-        
+
         hitBoxBtn.MouseButton1Click:Connect(function()
             _G.HitBoxEnabled = not _G.HitBoxEnabled
-            
             if _G.HitBoxEnabled then
                 hitBoxBtn.Text = "HITBOX: ON"
                 hitBoxBtn.TextColor3 = Color3.fromRGB(148, 0, 211)
@@ -578,8 +552,23 @@ local function createMainGUI()
                 hitBoxBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             end
         end)
+
+        blockRollBtn.MouseButton1Click:Connect(function()
+            _G.BlockRollEnabled = not _G.BlockRollEnabled
+            if _G.BlockRollEnabled then
+                blockRollBtn.Text = "BLOCK ROLL: ON"
+                blockRollBtn.TextColor3 = Color3.fromRGB(148, 0, 211)
+                blockRollBtn.BackgroundColor3 = Color3.fromRGB(100, 75, 25)
+            else
+                blockRollBtn.Text = "BLOCK ROLL: OFF"
+                blockRollBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+                blockRollBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            end
+            if _G.UpdateBlockRoll then _G.UpdateBlockRoll() end
+        end)
     end
 
+    -- STATUS & CREDIT
     local statusLabel = Instance.new("TextLabel")
     statusLabel.Size = UDim2.new(0.92, 0, 0, 20)
     statusLabel.Position = UDim2.new(0.04, 0, 0, yPos)
@@ -590,7 +579,7 @@ local function createMainGUI()
     statusLabel.TextSize = 10
     statusLabel.TextXAlignment = Enum.TextXAlignment.Left
     statusLabel.Parent = mainFrame
-    
+
     local creditLabel = Instance.new("TextLabel")
     creditLabel.Size = UDim2.new(1, 0, 0, 18)
     creditLabel.Position = UDim2.new(0, 0, 1, -19)
@@ -600,27 +589,25 @@ local function createMainGUI()
     creditLabel.Font = Enum.Font.Gotham
     creditLabel.TextSize = 9
     creditLabel.Parent = mainFrame
-    
+
+    -- INF AMMO FUNCTION
     local function updateInfiniteAmmo()
         if ammoConnection then
             ammoConnection:Disconnect()
             ammoConnection = nil
         end
-        
+
         if _G.InfiniteAmmoEnabled then
             ammoConnection = RunService.Heartbeat:Connect(function()
                 pcall(function()
                     if player.Character then
                         local tool = player.Character:FindFirstChildOfClass("Tool")
-                        
                         if tool then
                             if currentTool ~= tool then
                                 currentTool = tool
                                 weaponLabel.Text = "🎯 Weapon: " .. tool.Name
                             end
-                            
                             local currentAmmo = tool:FindFirstChild("CurrentAmmo", true)
-                            
                             if currentAmmo and (currentAmmo:IsA("IntValue") or currentAmmo:IsA("NumberValue")) then
                                 if currentAmmo.Value < 999 then
                                     currentAmmo.Value = 999
@@ -635,7 +622,6 @@ local function createMainGUI()
                     end
                 end)
             end)
-            
             statusLabel.Text = "Ammo Active"
         else
             currentTool = nil
@@ -643,71 +629,51 @@ local function createMainGUI()
             statusLabel.Text = isVIP and "VIP Active" or "Free Version"
         end
     end
-    
+
     toggleBtn.MouseButton1Click:Connect(function()
         _G.InfiniteAmmoEnabled = not _G.InfiniteAmmoEnabled
-        
         if _G.InfiniteAmmoEnabled then
             toggleBtn.Text = "INF AMMO: ON"
             toggleBtn.TextColor3 = Color3.fromRGB(148, 0, 211)
             toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 75, 25)
-            toggleBtn.BorderColor3 = Color3.fromRGB(148, 0, 211)
         else
             toggleBtn.Text = "INF AMMO: OFF"
             toggleBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
             toggleBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            toggleBtn.BorderColor3 = Color3.fromRGB(60, 60, 60)
         end
-        
         updateInfiniteAmmo()
     end)
-    
+
     espBtn.MouseButton1Click:Connect(function()
         _G.ESPEnabled = not _G.ESPEnabled
-        
         if _G.ESPEnabled then
             espBtn.Text = "ESP: ON"
             espBtn.TextColor3 = Color3.fromRGB(148, 0, 211)
             espBtn.BackgroundColor3 = Color3.fromRGB(100, 75, 25)
-            espBtn.BorderColor3 = Color3.fromRGB(148, 0, 211)
         else
             espBtn.Text = "ESP: OFF"
             espBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
             espBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            espBtn.BorderColor3 = Color3.fromRGB(60, 60, 60)
         end
-        
         updateESP()
     end)
-    
-    local isMinimized = false
-    
+
+    -- CLOSE & OPEN
     closeButton.MouseButton1Click:Connect(function()
         mainFrame.Visible = false
         iconButton.Visible = true
-        isMinimized = true
     end)
-    
-    iconButton.MouseButton1Click:Connect(function()
-        if not iconButton:FindFirstChild("IsDragging") or not iconButton.IsDragging.Value then
-            mainFrame.Visible = true
-            iconButton.Visible = false
-            isMinimized = false
-        end
-    end)
-    
-    -- === IMPROVED DRAGGING SYSTEM ===
+
+    -- DRAG MAIN FRAME
     local UIS = game:GetService("UserInputService")
-    
-    -- Main Frame Drag
     local dragging, dragStart, startPos = false, nil, nil
-    
+
     dragHandle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = mainFrame.Position
-            
+
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
@@ -715,300 +681,60 @@ local function createMainGUI()
             end)
         end
     end)
-    
+
     UIS.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
             mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
-    
-    -- Icon Button Drag
+
+    -- DRAG ICON BUTTON (FIXED)
     local iconDragging = false
     local iconDragStart = nil
     local iconStartPos = nil
-    local iconHasMoved = false
-    
-    local isDraggingValue = Instance.new("BoolValue")
-    isDraggingValue.Name = "IsDragging"
-    isDraggingValue.Value = false
-    isDraggingValue.Parent = iconButton
-    
+    local iconMoved = false
+
     iconButton.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             iconDragging = true
+            iconMoved = false
             iconDragStart = input.Position
             iconStartPos = iconButton.Position
-            iconHasMoved = false
-            isDraggingValue.Value = false
-            
+
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     iconDragging = false
-                    task.wait(0.05)
-                    isDraggingValue.Value = false
+                    if not iconMoved then
+                        mainFrame.Visible = true
+                        iconButton.Visible = false
+                    end
                 end
             end)
         end
     end)
-    
+
     UIS.InputChanged:Connect(function(input)
         if iconDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - iconDragStart
-            if math.abs(delta.X) > 3 or math.abs(delta.Y) > 3 then
-                iconHasMoved = true
-                isDraggingValue.Value = true
+            if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then
+                iconMoved = true
             end
             iconButton.Position = UDim2.new(iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X, iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y)
         end
     end)
-    
+
     player.CharacterAdded:Connect(function()
         task.wait(0.5)
         currentTool = nil
         weaponLabel.Text = "🎯 Weapon: None"
     end)
-    
-    if isVIP and vipListBtn then
-        vipListBtn.MouseButton1Click:Connect(function()
-            local vipListGui = Instance.new("ScreenGui")
-            vipListGui.Name = "VIPListGUI"
-            vipListGui.Parent = game.CoreGui
-            
-            local keyFrame = Instance.new("Frame")
-            keyFrame.Size = UDim2.new(0, 320, 0, 160)
-            keyFrame.Position = UDim2.new(0.5, -160, 0.5, -80)
-            keyFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-            keyFrame.BorderColor3 = Color3.fromRGB(148, 0, 211)
-            keyFrame.BorderSizePixel = 3
-            keyFrame.Parent = vipListGui
-            
-            Instance.new("UICorner", keyFrame).CornerRadius = UDim.new(0, 12)
-            
-            local keyTitle = Instance.new("TextLabel")
-            keyTitle.Size = UDim2.new(1, -50, 0, 35)
-            keyTitle.Position = UDim2.new(0, 15, 0, 10)
-            keyTitle.BackgroundTransparency = 1
-            keyTitle.Text = "🔐 VIP Member List"
-            keyTitle.TextColor3 = Color3.fromRGB(148, 0, 211)
-            keyTitle.Font = Enum.Font.GothamBold
-            keyTitle.TextSize = 15
-            keyTitle.Parent = keyFrame
-            
-            local keyCloseBtn = Instance.new("TextButton")
-            keyCloseBtn.Size = UDim2.new(0, 28, 0, 28)
-            keyCloseBtn.Position = UDim2.new(1, -35, 0, 8)
-            keyCloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-            keyCloseBtn.Text = "X"
-            keyCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            keyCloseBtn.Font = Enum.Font.GothamBold
-            keyCloseBtn.TextSize = 14
-            keyCloseBtn.Parent = keyFrame
-            
-            Instance.new("UICorner", keyCloseBtn).CornerRadius = UDim.new(0, 7)
-            
-            keyCloseBtn.MouseButton1Click:Connect(function()
-                vipListGui:Destroy()
-            end)
-            
-            local keyLabel = Instance.new("TextLabel")
-            keyLabel.Size = UDim2.new(1, -30, 0, 20)
-            keyLabel.Position = UDim2.new(0, 15, 0, 55)
-            keyLabel.BackgroundTransparency = 1
-            keyLabel.Text = "Enter Key:"
-            keyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            keyLabel.Font = Enum.Font.Gotham
-            keyLabel.TextSize = 12
-            keyLabel.TextXAlignment = Enum.TextXAlignment.Left
-            keyLabel.Parent = keyFrame
-            
-            local keyInput = Instance.new("TextBox")
-            keyInput.Size = UDim2.new(1, -30, 0, 38)
-            keyInput.Position = UDim2.new(0, 15, 0, 80)
-            keyInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-            keyInput.BorderColor3 = Color3.fromRGB(148, 0, 211)
-            keyInput.BorderSizePixel = 2
-            keyInput.Text = ""
-            keyInput.PlaceholderText = "Key..."
-            keyInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
-            keyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-            keyInput.Font = Enum.Font.Gotham
-            keyInput.TextSize = 12
-            keyInput.Parent = keyFrame
-            
-            Instance.new("UICorner", keyInput).CornerRadius = UDim.new(0, 7)
-            
-            local enterBtn = Instance.new("TextButton")
-            enterBtn.Size = UDim2.new(1, -30, 0, 32)
-            enterBtn.Position = UDim2.new(0, 15, 1, -42)
-            enterBtn.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
-            enterBtn.Text = "Enter"
-            enterBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
-            enterBtn.Font = Enum.Font.GothamBold
-            enterBtn.TextSize = 13
-            enterBtn.Parent = keyFrame
-            
-            Instance.new("UICorner", enterBtn).CornerRadius = UDim.new(0, 7)
-            
-            enterBtn.MouseButton1Click:Connect(function()
-                if keyInput.Text == VIP_LIST_KEY then
-                    keyFrame:Destroy()
-                    
-                    local listFrame = Instance.new("Frame")
-                    listFrame.Size = UDim2.new(0, 420, 0, 480)
-                    listFrame.Position = UDim2.new(0.5, -210, 0.5, -240)
-                    listFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-                    listFrame.BorderColor3 = Color3.fromRGB(148, 0, 211)
-                    listFrame.BorderSizePixel = 3
-                    listFrame.Parent = vipListGui
-                    
-                    Instance.new("UICorner", listFrame).CornerRadius = UDim.new(0, 12)
-                    
-                    local listHeader = Instance.new("Frame")
-                    listHeader.Size = UDim2.new(1, 0, 0, 55)
-                    listHeader.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
-                    listHeader.BorderSizePixel = 0
-                    listHeader.Parent = listFrame
-                    
-                    Instance.new("UICorner", listHeader).CornerRadius = UDim.new(0, 12)
-                    
-                    local headerCover = Instance.new("Frame")
-                    headerCover.Size = UDim2.new(1, 0, 0, 28)
-                    headerCover.Position = UDim2.new(0, 0, 1, -28)
-                    headerCover.BackgroundColor3 = Color3.fromRGB(148, 0, 211)
-                    headerCover.BorderSizePixel = 0
-                    headerCover.Parent = listHeader
-                    
-                    local listTitle = Instance.new("TextLabel")
-                    listTitle.Size = UDim2.new(1, -55, 1, 0)
-                    listTitle.Position = UDim2.new(0, 18, 0, 0)
-                    listTitle.BackgroundTransparency = 1
-                    listTitle.Text = "📋 VIP MEMBER LIST"
-                    listTitle.TextColor3 = Color3.fromRGB(0, 0, 0)
-                    listTitle.Font = Enum.Font.GothamBold
-                    listTitle.TextSize = 17
-                    listTitle.Parent = listHeader
-                    
-                    local listCloseBtn = Instance.new("TextButton")
-                    listCloseBtn.Size = UDim2.new(0, 38, 0, 38)
-                    listCloseBtn.Position = UDim2.new(1, -46, 0, 8)
-                    listCloseBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-                    listCloseBtn.Text = "X"
-                    listCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-                    listCloseBtn.Font = Enum.Font.GothamBold
-                    listCloseBtn.TextSize = 18
-                    listCloseBtn.Parent = listHeader
-                    
-                    Instance.new("UICorner", listCloseBtn).CornerRadius = UDim.new(0, 10)
-                    
-                    listCloseBtn.MouseButton1Click:Connect(function()
-                        vipListGui:Destroy()
-                    end)
-                    
-                    local scrollFrame = Instance.new("ScrollingFrame")
-                    scrollFrame.Size = UDim2.new(1, -24, 1, -75)
-                    scrollFrame.Position = UDim2.new(0, 12, 0, 63)
-                    scrollFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-                    scrollFrame.BorderSizePixel = 0
-                    scrollFrame.ScrollBarThickness = 10
-                    scrollFrame.Parent = listFrame
-                    
-                    Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0, 10)
-                    
-                    local listLayout = Instance.new("UIListLayout")
-                    listLayout.Padding = UDim.new(0, 10)
-                    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-                    listLayout.Parent = scrollFrame
-                    
-                    for username, expiry in pairs(VIP_USERS) do
-                        local userFrame = Instance.new("Frame")
-                        userFrame.Size = UDim2.new(1, -12, 0, 75)
-                        userFrame.BackgroundColor3 = Color3.fromRGB(38, 38, 38)
-                        userFrame.BorderSizePixel = 0
-                        userFrame.Parent = scrollFrame
-                        
-                        Instance.new("UICorner", userFrame).CornerRadius = UDim.new(0, 10)
-                        
-                        local usernameLabel = Instance.new("TextLabel")
-                        usernameLabel.Size = UDim2.new(1, -24, 0, 26)
-                        usernameLabel.Position = UDim2.new(0, 12, 0, 6)
-                        usernameLabel.BackgroundTransparency = 1
-                        usernameLabel.Text = "👤 " .. username
-                        usernameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-                        usernameLabel.Font = Enum.Font.GothamBold
-                        usernameLabel.TextSize = 14
-                        usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
-                        usernameLabel.Parent = userFrame
-                        
-                        local expiryText, expiryColor
-                        
-                        if expiry == -1 then
-                            expiryText = "📅 Lifetime VIP"
-                            expiryColor = Color3.fromRGB(148, 0, 211)
-                        else
-                            local timeLeft = expiry - os.time()
-                            local daysLeft = math.floor(timeLeft / 86400)
-                            
-                            if daysLeft < 0 then
-                                expiryText = "📅 EXPIRED"
-                                expiryColor = Color3.fromRGB(255, 80, 80)
-                            else
-                                expiryText = "📅 Expires in " .. daysLeft .. " days"
-                                expiryColor = Color3.fromRGB(148, 0, 211)
-                            end
-                        end
-                        
-                        local expiryLabel = Instance.new("TextLabel")
-                        expiryLabel.Size = UDim2.new(1, -24, 0, 22)
-                        expiryLabel.Position = UDim2.new(0, 12, 0, 32)
-                        expiryLabel.BackgroundTransparency = 1
-                        expiryLabel.Text = expiryText
-                        expiryLabel.TextColor3 = expiryColor
-                        expiryLabel.Font = Enum.Font.Gotham
-                        expiryLabel.TextSize = 12
-                        expiryLabel.TextXAlignment = Enum.TextXAlignment.Left
-                        expiryLabel.Parent = userFrame
-                        
-                        if expiry ~= -1 then
-                            local addedDays = math.floor((os.time() - (expiry - (30 * 86400))) / 86400)
-                            local addedLabel = Instance.new("TextLabel")
-                            addedLabel.Size = UDim2.new(1, -24, 0, 20)
-                            addedLabel.Position = UDim2.new(0, 12, 0, 54)
-                            addedLabel.BackgroundTransparency = 1
-                            addedLabel.Text = "⏳ Added " .. addedDays .. " days ago"
-                            addedLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-                            addedLabel.Font = Enum.Font.Gotham
-                            addedLabel.TextSize = 10
-                            addedLabel.TextXAlignment = Enum.TextXAlignment.Left
-                            addedLabel.Parent = userFrame
-                        end
-                    end
-                    
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 12)
-                else
-                    keyInput.Text = ""
-                    keyInput.PlaceholderText = "❌ Wrong Key!"
-                    keyInput.PlaceholderColor3 = Color3.fromRGB(255, 80, 80)
-                end
-            end)
-        end)
-    end
 end
 
 createMainGUI()
 
 print("============================")
 print("✨ VORTEX'S VIP LOADED!")
-print("VIP Status: " .. (isVIP and "✅ ACTIVE" or "🆓 FREE"))
+print("VIP: " .. (isVIP and "✅ ACTIVE" or "🆓 FREE"))
 print("============================")
-print("Free Features:")
-print("  🔫 Unlimited Ammo")
-print("  👁️ ESP with Lines")
-if isVIP then
-    print("VIP Features:")
-    print("  ☠️ Kill Player")
-    print("  💀 Kill All")
-    print("  🎯 Hit Box")
-    print("  📋 VIP Member List")
-end
-print("============================")
+
