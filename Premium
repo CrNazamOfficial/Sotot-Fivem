@@ -1,3 +1,4 @@
+
 local VIP_USERS = {
     ["NazamOfficial"] = -1,
 }
@@ -22,7 +23,7 @@ _G.KillingInProgress = false
 _G.HitBoxEnabled = false
 _G.ESPEnabled = false
 _G.BlockRollEnabled = false
-_G.HeadSize = 20
+_G.HeadSize = 4.7
 
 local RunService = game:GetService("RunService")
 local ammoConnection = nil
@@ -737,4 +738,3 @@ print("============================")
 print("✨ VORTEX'S VIP LOADED!")
 print("VIP: " .. (isVIP and "✅ ACTIVE" or "🆓 FREE"))
 print("============================")
-
