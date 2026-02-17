@@ -31,12 +31,6 @@ _G.NoRecoilEnabled = false
 _G.HeadSize = 6.1
 _G.SetupExecuted = false
 
-_G.KillQueue = {}
-_G.PendingKills = 0
-_G.TimerActive = false
-_G.TimerStartTime = 0
-_G.DELAY_TIME = 300
-
 local ammoConnection = nil
 local currentTool = nil
 
@@ -369,59 +363,6 @@ if isVIP then
     end)
 end
 
-local function sendQueuedKills()
-    if #_G.KillQueue == 0 then return end
-    
-    task.spawn(function()
-        for _, killData in ipairs(_G.KillQueue) do
-            pcall(function()
-                if killData.target and killData.target.Character then
-                    local targetHead = killData.target.Character:FindFirstChild("Head")
-                    if targetHead then
-                        local char = player.Character
-                        if char then
-                            local origin = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
-                            if origin then
-                                local distance = (targetHead.Position - origin.Position).Magnitude
-                                
-                                WeaponFired:FireServer(killData.weapon, {
-                                    ["id"] = 41,
-                                    ["charge"] = 0,
-                                    ["dir"] = (targetHead.Position - origin.Position).Unit,
-                                    ["origin"] = origin.Position
-                                })
-                                
-                                local travelTime = math.clamp(distance / 1000, 0.01, 0.1)
-                                task.wait(travelTime)
-                                
-                                for i = 1, 8 do
-                                    WeaponHit:FireServer(killData.weapon, {
-                                        ["p"] = targetHead.Position,
-                                        ["pid"] = killData.target.UserId,
-                                        ["part"] = targetHead,
-                                        ["d"] = 500,
-                                        ["maxDist"] = distance,
-                                        ["h"] = targetHead,
-                                        ["m"] = targetHead.Material,
-                                        ["sid"] = 41,
-                                        ["t"] = tick() + (i * 0.001),
-                                        ["n"] = Vector3.new(0, 1, 0)
-                                    })
-                                    task.wait(0.01)
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-            task.wait(0.05)
-        end
-        
-        _G.KillQueue = {}
-        _G.PendingKills = 0
-    end)
-end
-
 local function realisticKill(target)
     if not isVIP then return false end
     
@@ -435,37 +376,35 @@ local function realisticKill(target)
     local char = player.Character
     if not char then return false end
     
-    table.insert(_G.KillQueue, {
-        target = target,
-        weapon = ourWeapon,
-        timestamp = tick()
+    local origin = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+    if not origin then return false end
+    
+    local distance = (targetHead.Position - origin.Position).Magnitude
+    
+    WeaponFired:FireServer(ourWeapon, {
+        ["id"] = 41,
+        ["charge"] = 0,
+        ["dir"] = (targetHead.Position - origin.Position).Unit,
+        ["origin"] = origin.Position
     })
     
-    _G.PendingKills = _G.PendingKills + 1
+    local travelTime = math.clamp(distance / 1000, 0.01, 0.1)
+    task.wait(travelTime)
     
-    if not _G.TimerActive then
-        _G.TimerActive = true
-        _G.TimerStartTime = tick()
-        
-        task.spawn(function()
-            while _G.KillingInProgress do
-                local elapsed = tick() - _G.TimerStartTime
-                
-                if elapsed >= _G.DELAY_TIME then
-                    sendQueuedKills()
-                    _G.TimerStartTime = tick()
-                end
-                
-                task.wait(0.1)
-            end
-            
-            if #_G.KillQueue > 0 then
-                sendQueuedKills()
-            end
-            
-            _G.TimerActive = false
-            _G.TimerStartTime = 0
-        end)
+    for i = 1, 8 do
+        WeaponHit:FireServer(ourWeapon, {
+            ["p"] = targetHead.Position,
+            ["pid"] = target.UserId,
+            ["part"] = targetHead,
+            ["d"] = 500,
+            ["maxDist"] = distance,
+            ["h"] = targetHead,
+            ["m"] = targetHead.Material,
+            ["sid"] = 41,
+            ["t"] = tick() + (i * 0.001),
+            ["n"] = Vector3.new(0, 1, 0)
+        })
+        task.wait(0.01)
     end
     
     return true
@@ -652,7 +591,7 @@ local function createMainGUI()
     iconLabel.Parent = iconButton
     
     local frameWidth = math.floor(380 * SCALE)
-    local frameHeightVIP = math.floor(760 * SCALE)
+    local frameHeightVIP = math.floor(670 * SCALE)
     local frameHeightFree = math.floor(380 * SCALE)
     
     local mainFrame = Instance.new("Frame")
@@ -874,11 +813,11 @@ local function createMainGUI()
     statusLabel.TextXAlignment = Enum.TextXAlignment.Left
     statusLabel.Parent = statusFooter
     
-    local killPlayerBtn, killAllBtn, hitBoxBtn, blockRollBtn, setupBtn, usernameInput, noRecoilBtn, pendingKillsLabel, timerLabel
+    local killPlayerBtn, killAllBtn, hitBoxBtn, blockRollBtn, setupBtn, usernameInput, noRecoilBtn
     
     if isVIP then
         local vipSection = Instance.new("Frame")
-        vipSection.Size = UDim2.new(1, 0, 0, math.floor(660 * SCALE))
+        vipSection.Size = UDim2.new(1, 0, 0, math.floor(570 * SCALE))
         vipSection.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
         vipSection.BorderSizePixel = 0
         vipSection.LayoutOrder = 2
@@ -1062,94 +1001,6 @@ local function createMainGUI()
             Text = "ANTI GETAR: OFF",
             Parent = vipSection
         })
-        
-        pendingKillsLabel = Instance.new("Frame")
-        pendingKillsLabel.Size = UDim2.new(1, math.floor(-30 * SCALE), 0, math.floor(38 * SCALE))
-        pendingKillsLabel.Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(372 * SCALE))
-        pendingKillsLabel.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
-        pendingKillsLabel.BorderSizePixel = 0
-        pendingKillsLabel.Parent = vipSection
-        
-        local pendingCorner = Instance.new("UICorner")
-        pendingCorner.CornerRadius = UDim.new(0, math.floor(8 * SCALE))
-        pendingCorner.Parent = pendingKillsLabel
-        
-        local pendingGradient = Instance.new("UIGradient")
-        pendingGradient.Color = ColorSequence.new{
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(160, 160, 160)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(130, 130, 130))
-        }
-        pendingGradient.Rotation = 90
-        pendingGradient.Parent = pendingKillsLabel
-        
-        local pendingStroke = Instance.new("UIStroke")
-        pendingStroke.Color = Color3.fromRGB(100, 100, 100)
-        pendingStroke.Thickness = 1 * SCALE
-        pendingStroke.Transparency = 0.5
-        pendingStroke.Parent = pendingKillsLabel
-        
-        local pendingText = Instance.new("TextLabel")
-        pendingText.Size = UDim2.new(1, math.floor(-20 * SCALE), 1, 0)
-        pendingText.Position = UDim2.new(0, math.floor(10 * SCALE), 0, 0)
-        pendingText.BackgroundTransparency = 1
-        pendingText.Text = "Pending Kills: 0"
-        pendingText.TextColor3 = Color3.fromRGB(255, 215, 0)
-        pendingText.Font = Enum.Font.GothamBold
-        pendingText.TextSize = math.floor(12 * SCALE)
-        pendingText.TextXAlignment = Enum.TextXAlignment.Left
-        pendingText.Parent = pendingKillsLabel
-        
-        timerLabel = Instance.new("Frame")
-        timerLabel.Size = UDim2.new(1, math.floor(-30 * SCALE), 0, math.floor(38 * SCALE))
-        timerLabel.Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(420 * SCALE))
-        timerLabel.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
-        timerLabel.BorderSizePixel = 0
-        timerLabel.Parent = vipSection
-        
-        local timerCorner = Instance.new("UICorner")
-        timerCorner.CornerRadius = UDim.new(0, math.floor(8 * SCALE))
-        timerCorner.Parent = timerLabel
-        
-        local timerGradient = Instance.new("UIGradient")
-        timerGradient.Color = ColorSequence.new{
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(160, 160, 160)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(130, 130, 130))
-        }
-        timerGradient.Rotation = 90
-        timerGradient.Parent = timerLabel
-        
-        local timerStroke = Instance.new("UIStroke")
-        timerStroke.Color = Color3.fromRGB(100, 100, 100)
-        timerStroke.Thickness = 1 * SCALE
-        timerStroke.Transparency = 0.5
-        timerStroke.Parent = timerLabel
-        
-        local timerText = Instance.new("TextLabel")
-        timerText.Size = UDim2.new(1, math.floor(-20 * SCALE), 1, 0)
-        timerText.Position = UDim2.new(0, math.floor(10 * SCALE), 0, 0)
-        timerText.BackgroundTransparency = 1
-        timerText.Text = "Next Send: 5:00"
-        timerText.TextColor3 = Color3.fromRGB(0, 255, 255)
-        timerText.Font = Enum.Font.GothamBold
-        timerText.TextSize = math.floor(12 * SCALE)
-        timerText.TextXAlignment = Enum.TextXAlignment.Left
-        timerText.Parent = timerLabel
-        
-        task.spawn(function()
-            while task.wait(0.1) do
-                pendingText.Text = "Pending Kills: " .. tostring(_G.PendingKills)
-                
-                if _G.TimerActive and _G.TimerStartTime > 0 then
-                    local elapsed = tick() - _G.TimerStartTime
-                    local remaining = math.max(0, _G.DELAY_TIME - elapsed)
-                    local minutes = math.floor(remaining / 60)
-                    local seconds = math.floor(remaining % 60)
-                    timerText.Text = string.format("Next Send: %d:%02d", minutes, seconds)
-                else
-                    timerText.Text = "Next Send: 5:00"
-                end
-            end
-        end)
         
         local vipStatusFooter = Instance.new("Frame")
         vipStatusFooter.Size = UDim2.new(1, math.floor(-30 * SCALE), 0, math.floor(28 * SCALE))
