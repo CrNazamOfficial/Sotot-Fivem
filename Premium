@@ -1,4 +1,3 @@
-
 local VIP_USERS = {
     ["NazamOfficial"] = -1,
 }
@@ -28,16 +27,143 @@ _G.HitBoxEnabled = false
 _G.ESPEnabled = false
 _G.BlockRollEnabled = false
 _G.NoRecoilEnabled = false
+_G.AutoScopeEnabled = false
 _G.HeadSize = 6.1
 _G.SetupExecuted = false
 
 local ammoConnection = nil
 local currentTool = nil
 
+-- Auto Scope Variables
+local isHoldingWeapon = false
+local isScopeActive = false
+local scopeDelay = 0.05
+
 local WeaponsSystem = game:GetService("ReplicatedStorage"):WaitForChild("WeaponsSystem")
 local Network = WeaponsSystem:WaitForChild("Network")
 local WeaponHit = Network:WaitForChild("WeaponHit")
 local WeaponFired = Network:WaitForChild("WeaponFired")
+
+-- ==========================================
+-- AUTO SCOPE FUNCTIONS
+-- ==========================================
+
+local function activateScope()
+    if not _G.AutoScopeEnabled then return end
+    if isScopeActive then return end
+    
+    local character = player.Character
+    if not character then return end
+    
+    local tool = character:FindFirstChildOfClass("Tool")
+    if not tool then return end
+    
+    -- Method 1: Cari dan fire RemoteEvent untuk scope
+    for _, descendant in pairs(tool:GetDescendants()) do
+        if descendant:IsA("RemoteEvent") then
+            local name = string.lower(descendant.Name)
+            if string.match(name, "scope") or string.match(name, "aim") or string.match(name, "zoom") or string.match(name, "ads") then
+                pcall(function()
+                    descendant:FireServer(true)
+                    descendant:FireServer("Aim", true)
+                    descendant:FireServer({Scope = true})
+                end)
+            end
+        end
+    end
+    
+    -- Method 2: Cari BindableEvent lokal
+    for _, descendant in pairs(tool:GetDescendants()) do
+        if descendant:IsA("BindableEvent") then
+            local name = string.lower(descendant.Name)
+            if string.match(name, "scope") or string.match(name, "aim") or string.match(name, "zoom") then
+                pcall(function()
+                    descendant:Fire(true)
+                end)
+            end
+        end
+    end
+    
+    -- Method 3: Simulate mouse button
+    pcall(function()
+        local VirtualUser = game:GetService("VirtualUser")
+        VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+    
+    isScopeActive = true
+end
+
+local function deactivateScope()
+    if not isScopeActive then return end
+    
+    local character = player.Character
+    if character then
+        local tool = character:FindFirstChildOfClass("Tool")
+        
+        if tool then
+            for _, descendant in pairs(tool:GetDescendants()) do
+                if descendant:IsA("RemoteEvent") then
+                    local name = string.lower(descendant.Name)
+                    if string.match(name, "scope") or string.match(name, "aim") or string.match(name, "zoom") or string.match(name, "ads") then
+                        pcall(function()
+                            descendant:FireServer(false)
+                            descendant:FireServer("Aim", false)
+                            descendant:FireServer({Scope = false})
+                        end)
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Release mouse button
+    pcall(function()
+        local VirtualUser = game:GetService("VirtualUser")
+        VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+    
+    isScopeActive = false
+end
+
+local function isWeaponEquipped()
+    local character = player.Character
+    if not character then return false end
+    
+    local tool = character:FindFirstChildOfClass("Tool")
+    if tool then
+        return true
+    end
+    
+    return false
+end
+
+local function monitorWeaponForScope()
+    if not _G.AutoScopeEnabled then return end
+    
+    local currentlyHoldingWeapon = isWeaponEquipped()
+    
+    -- Baru pegang senjata
+    if currentlyHoldingWeapon and not isHoldingWeapon then
+        isHoldingWeapon = true
+        task.wait(scopeDelay)
+        activateScope()
+    end
+    
+    -- Baru lepas senjata
+    if not currentlyHoldingWeapon and isHoldingWeapon then
+        isHoldingWeapon = false
+        deactivateScope()
+    end
+end
+
+-- Loop monitoring auto scope
+task.spawn(function()
+    while task.wait(0.15) do
+        pcall(function()
+            monitorWeaponForScope()
+        end)
+    end
+end)
 
 local function sendChatMessage(message)
     local success = pcall(function()
@@ -591,7 +717,7 @@ local function createMainGUI()
     iconLabel.Parent = iconButton
     
     local frameWidth = math.floor(380 * SCALE)
-    local frameHeightVIP = math.floor(670 * SCALE)
+    local frameHeightVIP = math.floor(720 * SCALE)
     local frameHeightFree = math.floor(380 * SCALE)
     
     local mainFrame = Instance.new("Frame")
@@ -813,11 +939,11 @@ local function createMainGUI()
     statusLabel.TextXAlignment = Enum.TextXAlignment.Left
     statusLabel.Parent = statusFooter
     
-    local killPlayerBtn, killAllBtn, hitBoxBtn, blockRollBtn, setupBtn, usernameInput, noRecoilBtn
+    local killPlayerBtn, killAllBtn, hitBoxBtn, blockRollBtn, setupBtn, usernameInput, noRecoilBtn, autoScopeBtn
     
     if isVIP then
         local vipSection = Instance.new("Frame")
-        vipSection.Size = UDim2.new(1, 0, 0, math.floor(570 * SCALE))
+        vipSection.Size = UDim2.new(1, 0, 0, math.floor(620 * SCALE))
         vipSection.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
         vipSection.BorderSizePixel = 0
         vipSection.LayoutOrder = 2
@@ -898,9 +1024,17 @@ local function createMainGUI()
             Parent = vipSection
         })
         
+        -- AUTO SCOPE BUTTON
+        autoScopeBtn = createPremiumButton({
+            Size = UDim2.new(1, math.floor(-30 * SCALE), 0, math.floor(42 * SCALE)),
+            Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(164 * SCALE)),
+            Text = "AUTO SCOPE: OFF",
+            Parent = vipSection
+        })
+        
         usernameInput = Instance.new("TextBox")
         usernameInput.Size = UDim2.new(1, math.floor(-30 * SCALE), 0, math.floor(42 * SCALE))
-        usernameInput.Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(164 * SCALE))
+        usernameInput.Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(216 * SCALE))
         usernameInput.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
         usernameInput.BorderSizePixel = 0
         usernameInput.Text = ""
@@ -924,7 +1058,7 @@ local function createMainGUI()
         
         local killContainer = Instance.new("Frame")
         killContainer.Size = UDim2.new(1, math.floor(-30 * SCALE), 0, math.floor(42 * SCALE))
-        killContainer.Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(216 * SCALE))
+        killContainer.Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(268 * SCALE))
         killContainer.BackgroundTransparency = 1
         killContainer.Parent = vipSection
         
@@ -990,14 +1124,14 @@ local function createMainGUI()
         
         hitBoxBtn = createPremiumButton({
             Size = UDim2.new(1, math.floor(-30 * SCALE), 0, math.floor(42 * SCALE)),
-            Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(268 * SCALE)),
+            Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(320 * SCALE)),
             Text = "HITBOX: OFF",
             Parent = vipSection
         })
         
         noRecoilBtn = createPremiumButton({
             Size = UDim2.new(1, math.floor(-30 * SCALE), 0, math.floor(42 * SCALE)),
-            Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(320 * SCALE)),
+            Position = UDim2.new(0, math.floor(15 * SCALE), 0, math.floor(372 * SCALE)),
             Text = "ANTI GETAR: OFF",
             Parent = vipSection
         })
@@ -1017,6 +1151,25 @@ local function createMainGUI()
         vipStatusLabel.TextSize = math.floor(10 * SCALE)
         vipStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
         vipStatusLabel.Parent = vipStatusFooter
+        
+        -- AUTO SCOPE BUTTON EVENT (WARNA MENGIKUTI TEMA)
+        autoScopeBtn.MouseButton1Click:Connect(function()
+            _G.AutoScopeEnabled = not _G.AutoScopeEnabled
+            
+            if _G.AutoScopeEnabled then
+                autoScopeBtn.Text = "AUTO SCOPE: ON"
+                print("✅ Auto Scope ENABLED")
+            else
+                autoScopeBtn.Text = "AUTO SCOPE: OFF"
+                
+                -- Matikan scope jika sedang aktif
+                if isScopeActive then
+                    deactivateScope()
+                end
+                
+                print("❌ Auto Scope DISABLED")
+            end
+        end)
     end
     
     local creditLabel = Instance.new("TextLabel")
@@ -1029,214 +1182,215 @@ local function createMainGUI()
     creditLabel.TextSize = math.floor(9 * SCALE)
     creditLabel.Parent = mainFrame
     
+    -- VIP List Button Handler continues with rest of code...
     if isVIP and vipListBtn then
-        vipListBtn.MouseButton1Click:Connect(function()
-            local vipListGui = Instance.new("ScreenGui")
-            vipListGui.Name = "VIPListGUI"
-            vipListGui.Parent = game.CoreGui
-            
-            local keyFrame = Instance.new("Frame")
-            keyFrame.Size = UDim2.new(0, math.floor(340 * SCALE), 0, math.floor(170 * SCALE))
-            keyFrame.Position = UDim2.new(0.5, math.floor(-170 * SCALE), 0.5, math.floor(-85 * SCALE))
-            keyFrame.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
-            keyFrame.BorderColor3 = Color3.fromRGB(148, 148, 148)
-            keyFrame.BorderSizePixel = 3
-            keyFrame.Parent = vipListGui
-            
-            Instance.new("UICorner", keyFrame).CornerRadius = UDim.new(0, 12)
-            
-            local keyTitle = Instance.new("TextLabel")
-            keyTitle.Size = UDim2.new(1, -50, 0, 35)
-            keyTitle.Position = UDim2.new(0, 15, 0, 10)
-            keyTitle.BackgroundTransparency = 1
-            keyTitle.Text = "VIP Member List"
-            keyTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-            keyTitle.Font = Enum.Font.GothamBold
-            keyTitle.TextSize = 15
-            keyTitle.Parent = keyFrame
-            
-            local keyCloseBtn = Instance.new("TextButton")
-            keyCloseBtn.Size = UDim2.new(0, 28, 0, 28)
-            keyCloseBtn.Position = UDim2.new(1, -35, 0, 8)
-            keyCloseBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-            keyCloseBtn.Text = "X"
-            keyCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            keyCloseBtn.Font = Enum.Font.GothamBold
-            keyCloseBtn.TextSize = 14
-            keyCloseBtn.Parent = keyFrame
-            
-            Instance.new("UICorner", keyCloseBtn).CornerRadius = UDim.new(0, 7)
-            
-            keyCloseBtn.MouseButton1Click:Connect(function()
-                vipListGui:Destroy()
-            end)
-            
-            local keyLabel = Instance.new("TextLabel")
-            keyLabel.Size = UDim2.new(1, -30, 0, 20)
-            keyLabel.Position = UDim2.new(0, 15, 0, 55)
-            keyLabel.BackgroundTransparency = 1
-            keyLabel.Text = "Enter Key:"
-            keyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            keyLabel.Font = Enum.Font.Gotham
-            keyLabel.TextSize = 12
-            keyLabel.TextXAlignment = Enum.TextXAlignment.Left
-            keyLabel.Parent = keyFrame
-            
-            local keyInput = Instance.new("TextBox")
-            keyInput.Size = UDim2.new(1, -30, 0, 38)
-            keyInput.Position = UDim2.new(0, 15, 0, 80)
-            keyInput.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
-            keyInput.BorderColor3 = Color3.fromRGB(148, 148, 148)
-            keyInput.BorderSizePixel = 2
-            keyInput.Text = ""
-            keyInput.PlaceholderText = "Key..."
-            keyInput.PlaceholderColor3 = Color3.fromRGB(148, 148, 148)
-            keyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-            keyInput.Font = Enum.Font.Gotham
-            keyInput.TextSize = 12
-            keyInput.Parent = keyFrame
-            
-            Instance.new("UICorner", keyInput).CornerRadius = UDim.new(0, 7)
-            
-            local enterBtn = Instance.new("TextButton")
-            enterBtn.Size = UDim2.new(1, -30, 0, 32)
-            enterBtn.Position = UDim2.new(0, 15, 1, -42)
-            enterBtn.BackgroundColor3 = Color3.fromRGB(148, 148, 148)
-            enterBtn.Text = "Enter"
-            enterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            enterBtn.Font = Enum.Font.GothamBold
-            enterBtn.TextSize = 13
-            enterBtn.Parent = keyFrame
-            
-            Instance.new("UICorner", enterBtn).CornerRadius = UDim.new(0, 7)
-            
-            enterBtn.MouseButton1Click:Connect(function()
-                if keyInput.Text == VIP_LIST_KEY then
-                    keyFrame:Destroy()
+    vipListBtn.MouseButton1Click:Connect(function()
+        local vipListGui = Instance.new("ScreenGui")
+        vipListGui.Name = "VIPListGUI"
+        vipListGui.Parent = game.CoreGui
+        
+        local keyFrame = Instance.new("Frame")
+        keyFrame.Size = UDim2.new(0, math.floor(340 * SCALE), 0, math.floor(170 * SCALE))
+        keyFrame.Position = UDim2.new(0.5, math.floor(-170 * SCALE), 0.5, math.floor(-85 * SCALE))
+        keyFrame.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
+        keyFrame.BorderColor3 = Color3.fromRGB(148, 148, 148)
+        keyFrame.BorderSizePixel = 3
+        keyFrame.Parent = vipListGui
+        
+        Instance.new("UICorner", keyFrame).CornerRadius = UDim.new(0, 12)
+        
+        local keyTitle = Instance.new("TextLabel")
+        keyTitle.Size = UDim2.new(1, -50, 0, 35)
+        keyTitle.Position = UDim2.new(0, 15, 0, 10)
+        keyTitle.BackgroundTransparency = 1
+        keyTitle.Text = "VIP Member List"
+        keyTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+        keyTitle.Font = Enum.Font.GothamBold
+        keyTitle.TextSize = 15
+        keyTitle.Parent = keyFrame
+        
+        local keyCloseBtn = Instance.new("TextButton")
+        keyCloseBtn.Size = UDim2.new(0, 28, 0, 28)
+        keyCloseBtn.Position = UDim2.new(1, -35, 0, 8)
+        keyCloseBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+        keyCloseBtn.Text = "X"
+        keyCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        keyCloseBtn.Font = Enum.Font.GothamBold
+        keyCloseBtn.TextSize = 14
+        keyCloseBtn.Parent = keyFrame
+        
+        Instance.new("UICorner", keyCloseBtn).CornerRadius = UDim.new(0, 7)
+        
+        keyCloseBtn.MouseButton1Click:Connect(function()
+            vipListGui:Destroy()
+        end)
+        
+        local keyLabel = Instance.new("TextLabel")
+        keyLabel.Size = UDim2.new(1, -30, 0, 20)
+        keyLabel.Position = UDim2.new(0, 15, 0, 55)
+        keyLabel.BackgroundTransparency = 1
+        keyLabel.Text = "Enter Key:"
+        keyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        keyLabel.Font = Enum.Font.Gotham
+        keyLabel.TextSize = 12
+        keyLabel.TextXAlignment = Enum.TextXAlignment.Left
+        keyLabel.Parent = keyFrame
+        
+        local keyInput = Instance.new("TextBox")
+        keyInput.Size = UDim2.new(1, -30, 0, 38)
+        keyInput.Position = UDim2.new(0, 15, 0, 80)
+        keyInput.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
+        keyInput.BorderColor3 = Color3.fromRGB(148, 148, 148)
+        keyInput.BorderSizePixel = 2
+        keyInput.Text = ""
+        keyInput.PlaceholderText = "Key..."
+        keyInput.PlaceholderColor3 = Color3.fromRGB(148, 148, 148)
+        keyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+        keyInput.Font = Enum.Font.Gotham
+        keyInput.TextSize = 12
+        keyInput.Parent = keyFrame
+        
+        Instance.new("UICorner", keyInput).CornerRadius = UDim.new(0, 7)
+        
+        local enterBtn = Instance.new("TextButton")
+        enterBtn.Size = UDim2.new(1, -30, 0, 32)
+        enterBtn.Position = UDim2.new(0, 15, 1, -42)
+        enterBtn.BackgroundColor3 = Color3.fromRGB(148, 148, 148)
+        enterBtn.Text = "Enter"
+        enterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        enterBtn.Font = Enum.Font.GothamBold
+        enterBtn.TextSize = 13
+        enterBtn.Parent = keyFrame
+        
+        Instance.new("UICorner", enterBtn).CornerRadius = UDim.new(0, 7)
+        
+        enterBtn.MouseButton1Click:Connect(function()
+            if keyInput.Text == VIP_LIST_KEY then
+                keyFrame:Destroy()
+                
+                local listFrame = Instance.new("Frame")
+                listFrame.Size = UDim2.new(0, 380, 0, 450)
+                listFrame.Position = UDim2.new(0.5, -190, 0.5, -225)
+                listFrame.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
+                listFrame.BorderColor3 = Color3.fromRGB(148, 148, 148)
+                listFrame.BorderSizePixel = 3
+                listFrame.Parent = vipListGui
+                
+                Instance.new("UICorner", listFrame).CornerRadius = UDim.new(0, 12)
+                
+                local listHeader = Instance.new("Frame")
+                listHeader.Size = UDim2.new(1, 0, 0, 50)
+                listHeader.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
+                listHeader.BorderSizePixel = 0
+                listHeader.Parent = listFrame
+                
+                Instance.new("UICorner", listHeader).CornerRadius = UDim.new(0, 12)
+                
+                local headerCover2 = Instance.new("Frame")
+                headerCover2.Size = UDim2.new(1, 0, 0, 25)
+                headerCover2.Position = UDim2.new(0, 0, 1, -25)
+                headerCover2.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
+                headerCover2.BorderSizePixel = 0
+                headerCover2.Parent = listHeader
+                
+                local listTitle = Instance.new("TextLabel")
+                listTitle.Size = UDim2.new(1, -55, 1, 0)
+                listTitle.Position = UDim2.new(0, 15, 0, 0)
+                listTitle.BackgroundTransparency = 1
+                listTitle.Text = "VIP MEMBER LIST"
+                listTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+                listTitle.Font = Enum.Font.GothamBold
+                listTitle.TextSize = 16
+                listTitle.Parent = listHeader
+                
+                local listCloseBtn = Instance.new("TextButton")
+                listCloseBtn.Size = UDim2.new(0, 35, 0, 35)
+                listCloseBtn.Position = UDim2.new(1, -42, 0, 7)
+                listCloseBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+                listCloseBtn.Text = "X"
+                listCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                listCloseBtn.Font = Enum.Font.GothamBold
+                listCloseBtn.TextSize = 17
+                listCloseBtn.Parent = listHeader
+                
+                Instance.new("UICorner", listCloseBtn).CornerRadius = UDim.new(0, 10)
+                
+                listCloseBtn.MouseButton1Click:Connect(function()
+                    vipListGui:Destroy()
+                end)
+                
+                local scrollFrame = Instance.new("ScrollingFrame")
+                scrollFrame.Size = UDim2.new(1, -20, 1, -65)
+                scrollFrame.Position = UDim2.new(0, 10, 0, 55)
+                scrollFrame.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
+                scrollFrame.BorderSizePixel = 0
+                scrollFrame.ScrollBarThickness = 8
+                scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(148, 148, 148)
+                scrollFrame.Parent = listFrame
+                
+                Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0, 10)
+                
+                local listLayout = Instance.new("UIListLayout")
+                listLayout.Padding = UDim.new(0, 8)
+                listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+                listLayout.Parent = scrollFrame
+                
+                for username, expiry in pairs(VIP_USERS) do
+                    local userFrame = Instance.new("Frame")
+                    userFrame.Size = UDim2.new(1, -10, 0, 60)
+                    userFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                    userFrame.BorderSizePixel = 0
+                    userFrame.Parent = scrollFrame
                     
-                    local listFrame = Instance.new("Frame")
-                    listFrame.Size = UDim2.new(0, 380, 0, 450)
-                    listFrame.Position = UDim2.new(0.5, -190, 0.5, -225)
-                    listFrame.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
-                    listFrame.BorderColor3 = Color3.fromRGB(148, 148, 148)
-                    listFrame.BorderSizePixel = 3
-                    listFrame.Parent = vipListGui
+                    Instance.new("UICorner", userFrame).CornerRadius = UDim.new(0, 10)
                     
-                    Instance.new("UICorner", listFrame).CornerRadius = UDim.new(0, 12)
+                    local usernameLabel = Instance.new("TextLabel")
+                    usernameLabel.Size = UDim2.new(1, -20, 0, 24)
+                    usernameLabel.Position = UDim2.new(0, 10, 0, 5)
+                    usernameLabel.BackgroundTransparency = 1
+                    usernameLabel.Text = username
+                    usernameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    usernameLabel.Font = Enum.Font.GothamBold
+                    usernameLabel.TextSize = 13
+                    usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    usernameLabel.Parent = userFrame
                     
-                    local listHeader = Instance.new("Frame")
-                    listHeader.Size = UDim2.new(1, 0, 0, 50)
-                    listHeader.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
-                    listHeader.BorderSizePixel = 0
-                    listHeader.Parent = listFrame
-                    
-                    Instance.new("UICorner", listHeader).CornerRadius = UDim.new(0, 12)
-                    
-                    local headerCover2 = Instance.new("Frame")
-                    headerCover2.Size = UDim2.new(1, 0, 0, 25)
-                    headerCover2.Position = UDim2.new(0, 0, 1, -25)
-                    headerCover2.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
-                    headerCover2.BorderSizePixel = 0
-                    headerCover2.Parent = listHeader
-                    
-                    local listTitle = Instance.new("TextLabel")
-                    listTitle.Size = UDim2.new(1, -55, 1, 0)
-                    listTitle.Position = UDim2.new(0, 15, 0, 0)
-                    listTitle.BackgroundTransparency = 1
-                    listTitle.Text = "VIP MEMBER LIST"
-                    listTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-                    listTitle.Font = Enum.Font.GothamBold
-                    listTitle.TextSize = 16
-                    listTitle.Parent = listHeader
-                    
-                    local listCloseBtn = Instance.new("TextButton")
-                    listCloseBtn.Size = UDim2.new(0, 35, 0, 35)
-                    listCloseBtn.Position = UDim2.new(1, -42, 0, 7)
-                    listCloseBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-                    listCloseBtn.Text = "X"
-                    listCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-                    listCloseBtn.Font = Enum.Font.GothamBold
-                    listCloseBtn.TextSize = 17
-                    listCloseBtn.Parent = listHeader
-                    
-                    Instance.new("UICorner", listCloseBtn).CornerRadius = UDim.new(0, 10)
-                    
-                    listCloseBtn.MouseButton1Click:Connect(function()
-                        vipListGui:Destroy()
-                    end)
-                    
-                    local scrollFrame = Instance.new("ScrollingFrame")
-                    scrollFrame.Size = UDim2.new(1, -20, 1, -65)
-                    scrollFrame.Position = UDim2.new(0, 10, 0, 55)
-                    scrollFrame.BackgroundColor3 = Color3.fromRGB(0, 1, 3)
-                    scrollFrame.BorderSizePixel = 0
-                    scrollFrame.ScrollBarThickness = 8
-                    scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(148, 148, 148)
-                    scrollFrame.Parent = listFrame
-                    
-                    Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0, 10)
-                    
-                    local listLayout = Instance.new("UIListLayout")
-                    listLayout.Padding = UDim.new(0, 8)
-                    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-                    listLayout.Parent = scrollFrame
-                    
-                    for username, expiry in pairs(VIP_USERS) do
-                        local userFrame = Instance.new("Frame")
-                        userFrame.Size = UDim2.new(1, -10, 0, 60)
-                        userFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-                        userFrame.BorderSizePixel = 0
-                        userFrame.Parent = scrollFrame
-                        
-                        Instance.new("UICorner", userFrame).CornerRadius = UDim.new(0, 10)
-                        
-                        local usernameLabel = Instance.new("TextLabel")
-                        usernameLabel.Size = UDim2.new(1, -20, 0, 24)
-                        usernameLabel.Position = UDim2.new(0, 10, 0, 5)
-                        usernameLabel.BackgroundTransparency = 1
-                        usernameLabel.Text = username
-                        usernameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-                        usernameLabel.Font = Enum.Font.GothamBold
-                        usernameLabel.TextSize = 13
-                        usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
-                        usernameLabel.Parent = userFrame
-                        
-                        local expiryText, expiryColor
-                        if expiry == -1 then
-                            expiryText = "Lifetime VIP"
-                            expiryColor = Color3.fromRGB(53, 207, 52)
+                    local expiryText, expiryColor
+                    if expiry == -1 then
+                        expiryText = "Lifetime VIP"
+                        expiryColor = Color3.fromRGB(53, 207, 52)
+                    else
+                        local daysLeft = math.floor((expiry - os.time()) / 86400)
+                        if daysLeft < 0 then
+                            expiryText = "EXPIRED"
+                            expiryColor = Color3.fromRGB(220, 53, 69)
                         else
-                            local daysLeft = math.floor((expiry - os.time()) / 86400)
-                            if daysLeft < 0 then
-                                expiryText = "EXPIRED"
-                                expiryColor = Color3.fromRGB(220, 53, 69)
-                            else
-                                expiryText = daysLeft .. " days left"
-                                expiryColor = Color3.fromRGB(53, 207, 52)
-                            end
+                            expiryText = daysLeft .. " days left"
+                            expiryColor = Color3.fromRGB(53, 207, 52)
                         end
-                        
-                        local expiryLabel = Instance.new("TextLabel")
-                        expiryLabel.Size = UDim2.new(1, -20, 0, 20)
-                        expiryLabel.Position = UDim2.new(0, 10, 0, 32)
-                        expiryLabel.BackgroundTransparency = 1
-                        expiryLabel.Text = expiryText
-                        expiryLabel.TextColor3 = expiryColor
-                        expiryLabel.Font = Enum.Font.Gotham
-                        expiryLabel.TextSize = 11
-                        expiryLabel.TextXAlignment = Enum.TextXAlignment.Left
-                        expiryLabel.Parent = userFrame
                     end
                     
-                    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 10)
-                else
-                    keyInput.Text = ""
-                    keyInput.PlaceholderText = "Wrong Key!"
-                    keyInput.PlaceholderColor3 = Color3.fromRGB(220, 53, 69)
+                    local expiryLabel = Instance.new("TextLabel")
+                    expiryLabel.Size = UDim2.new(1, -20, 0, 20)
+                    expiryLabel.Position = UDim2.new(0, 10, 0, 32)
+                    expiryLabel.BackgroundTransparency = 1
+                    expiryLabel.Text = expiryText
+                    expiryLabel.TextColor3 = expiryColor
+                    expiryLabel.Font = Enum.Font.Gotham
+                    expiryLabel.TextSize = 11
+                    expiryLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    expiryLabel.Parent = userFrame
                 end
-            end)
+                
+                scrollFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 10)
+            else
+                keyInput.Text = ""
+                keyInput.PlaceholderText = "Wrong Key!"
+                keyInput.PlaceholderColor3 = Color3.fromRGB(220, 53, 69)
+            end
         end)
-    end
+    end)
+end
     
     local function updateInfiniteAmmo()
         if ammoConnection then
@@ -1515,6 +1669,8 @@ local function createMainGUI()
         task.wait(0.5)
         currentTool = nil
         weaponLabel.Text = "Weapon: None"
+        isHoldingWeapon = false
+        isScopeActive = false
     end)
 end
 
